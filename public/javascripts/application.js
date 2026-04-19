@@ -24,8 +24,123 @@ $j(document).ready(function() {
 
     prepareDeleteLinks();
     thermometer();
+    setupWorkLinkPrerendering();
     $j('body').addClass('javascript');
 });
+
+///////////////////////////////////////////////////////////////////
+// Work link prerendering
+///////////////////////////////////////////////////////////////////
+
+var workLinkPrerenderState = {
+  timer: null,
+  lastUrl: null,
+  rulesNode: null
+};
+
+// Check if the current browser supports speculation rules prerendering
+function supportsSpeculationRulesPrerender() {
+  return (
+    window.HTMLScriptElement &&
+    window.HTMLScriptElement.supports &&
+    window.HTMLScriptElement.supports('speculationrules')
+  );
+}
+
+// Restrict prerendering to same-origin canonical work pages from work blurbs
+function prerenderableWorkUrl(link) {
+  var parsedUrl;
+  try {
+    parsedUrl = new URL(link.href, window.location.origin);
+  } catch (error) {
+    return null;
+  }
+
+  if (parsedUrl.origin !== window.location.origin) {
+    return null;
+  }
+  if (parsedUrl.search && parsedUrl.search.length > 0) {
+    return null;
+  }
+
+  if (/^\/works\/\d+\/?$/.test(parsedUrl.pathname)) {
+    return parsedUrl.pathname;
+  }
+
+  return null;
+}
+
+// Get or create the speculation rules script element
+function getWorkLinkPrerenderRulesNode() {
+  if (workLinkPrerenderState.rulesNode) {
+    return workLinkPrerenderState.rulesNode;
+  }
+
+  var node = document.createElement('script');
+  node.type = 'speculationrules';
+  node.id = 'work-link-prerender-rules';
+
+  var target = document.head || document.body;
+  if (!target) {
+    return null;
+  }
+
+  target.appendChild(node);
+  workLinkPrerenderState.rulesNode = node;
+  return node;
+}
+
+// Queue prerendering so quick accidental hovers do not trigger a request
+function queueWorkLinkPrerender(url) {
+  if (workLinkPrerenderState.lastUrl === url) {
+    return;
+  }
+
+  clearTimeout(workLinkPrerenderState.timer);
+  workLinkPrerenderState.timer = setTimeout(function() {
+    workLinkPrerenderState.timer = null;
+    var node = getWorkLinkPrerenderRulesNode();
+    if (!node) {
+      return;
+    }
+
+    node.text = JSON.stringify({
+      prerender: [
+        {
+          source: 'list',
+          urls: [url]
+        }
+      ]
+    });
+    workLinkPrerenderState.lastUrl = url;
+  }, 80);
+}
+
+// Cancel queued prerendering when hover/focus leaves the link too quickly
+function cancelQueuedWorkLinkPrerender() {
+  clearTimeout(workLinkPrerenderState.timer);
+  workLinkPrerenderState.timer = null;
+}
+
+// Handle hover/focus on work title links inside work blurbs
+function handleWorkLinkPrerender(event) {
+  var url = prerenderableWorkUrl(event.currentTarget);
+  if (!url) {
+    return;
+  }
+  queueWorkLinkPrerender(url);
+}
+
+// Attach delegated handlers for work title links in blurbs
+function setupWorkLinkPrerendering() {
+  if (!supportsSpeculationRulesPrerender()) {
+    return;
+  }
+
+  var selector = 'a[data-prerender-work-link]';
+  $j(document).on('mouseenter focusin', selector, handleWorkLinkPrerender);
+  $j(document).on('mouseleave focusout', selector, cancelQueuedWorkLinkPrerender);
+}
 
 ///////////////////////////////////////////////////////////////////
 // Autocomplete

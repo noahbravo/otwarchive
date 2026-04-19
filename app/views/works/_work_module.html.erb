@@ -15,7 +15,7 @@
           <% end %>
         </span>
       <% end %>
-      <%= link_to work.title, @collection ? collection_work_path(@collection, work) : work %>
+      <%= link_to work.title, @collection ? collection_work_path(@collection, work) : work, data: { prerender_work_link: true } %>
       <%= ts('by') %>
 
       <!-- do not cache -->
